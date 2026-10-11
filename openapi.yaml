@@ -1,0 +1,151 @@
+openapi: 3.0.3
+info:
+  title: Logix Tea Light Mini v2
+  version: 1.1.0
+  description: HTTP API for the Logix Tea Light (ESP32-C3, 8x WS2812). All control endpoints return the full Status object.
+servers:
+  - url: http://logix-tea-light-xxxx.local
+paths:
+  /status:
+    get:
+      summary: Current state
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+  /effects:
+    get:
+      summary: Available effects
+      responses:
+        "200":
+          description: Effect list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, example: candle }
+                    name: { type: string, example: Candle }
+  /on:
+    get: { summary: Turn on, responses: { "200": { $ref: "#/components/responses/Status" } } }
+  /off:
+    get: { summary: Turn off, responses: { "200": { $ref: "#/components/responses/Status" } } }
+  /toggle:
+    get: { summary: Toggle power, responses: { "200": { $ref: "#/components/responses/Status" } } }
+  /set:
+    get:
+      summary: Change any subset of light settings
+      parameters:
+        - { name: power, in: query, schema: { type: string, enum: [on, off, toggle] } }
+        - { name: color, in: query, description: "rrggbb hex, optional leading #", schema: { type: string, example: ff7814 } }
+        - { name: brightness, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: speed, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: effect, in: query, schema: { $ref: "#/components/schemas/EffectId" } }
+        - { name: leds, in: query, description: Number of LEDs in the chain, schema: { type: integer, minimum: 1, maximum: 64 } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+        "400": { description: Invalid color or unknown effect }
+  /pixel/set:
+    get:
+      summary: Set one LED's color (switches to the custom effect)
+      parameters:
+        - { name: index, in: query, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: color, in: query, required: true, schema: { type: string, example: ff0000 } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+        "400": { description: Bad index or color }
+  /pixels/set:
+    get:
+      summary: Set LED colors from index 0 onward (switches to the custom effect)
+      parameters:
+        - { name: colors, in: query, required: true, description: Comma-separated rrggbb list, schema: { type: string, example: "ff0000,00ff00,0000ff" } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+        "400": { description: Bad color }
+  /ir/learn:
+    get:
+      summary: Assign the next received IR code to an action (15 s timeout)
+      parameters:
+        - { name: action, in: query, required: true, schema: { $ref: "#/components/schemas/IrAction" } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+  /ir/cancel:
+    get: { summary: Cancel IR learning, responses: { "200": { $ref: "#/components/responses/Status" } } }
+  /ir/clear:
+    get:
+      summary: Forget the IR code for an action
+      parameters:
+        - { name: action, in: query, required: true, schema: { $ref: "#/components/schemas/IrAction" } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+  /config/ir:
+    get:
+      summary: Enable or disable the IR receiver (off by default; most boards don't fit the TSOP38238)
+      parameters:
+        - { name: enabled, in: query, required: true, schema: { type: string, enum: [on, off] } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+  /config/ring:
+    get:
+      summary: Rotate the WebUI ring preview to match the board (UI only, saved per device)
+      parameters:
+        - { name: step, in: query, description: "1 = one LED clockwise, -1 = counter-clockwise", schema: { type: integer, enum: [1, -1] } }
+        - { name: value, in: query, description: Absolute rotation, schema: { type: integer, minimum: 0, maximum: 7 } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+  /config/hostname:
+    get:
+      summary: Rename the device (reboots)
+      parameters:
+        - { name: name, in: query, required: true, schema: { type: string, maxLength: 32 } }
+      responses:
+        "200": { description: Saved, content: { text/plain: { schema: { type: string } } } }
+  /wifi-config:
+    get:
+      summary: Start the WiFi Manager portal without dropping the current connection
+      responses:
+        "200":
+          description: Portal port
+          content: { application/json: { schema: { type: object, properties: { port: { type: integer, example: 8080 } } } } }
+  /forget-wifi:
+    get: { summary: Clear WiFi credentials and reboot into the setup hotspot, responses: { "200": { description: OK } } }
+  /restart:
+    get: { summary: Reboot, responses: { "200": { description: OK } } }
+  /logo.jpg:
+    get: { summary: WebUI logo, responses: { "200": { description: JPEG, content: { image/jpeg: {} } } } }
+components:
+  responses:
+    Status:
+      description: Current state
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Status" }
+  schemas:
+    EffectId:
+      type: string
+      enum: [solid, candle, breathe, rainbow, color_cycle, chase, twinkle, fire, custom]
+    IrAction:
+      type: string
+      enum: [power, bright_up, bright_down, effect_next, effect_prev, color_next, speed_up, speed_down]
+    Status:
+      type: object
+      properties:
+        power: { type: boolean }
+        color: { type: string, example: "#ff7814" }
+        brightness: { type: integer }
+        effect: { $ref: "#/components/schemas/EffectId" }
+        speed: { type: integer }
+        leds: { type: integer }
+        pixels: { type: array, items: { type: string }, description: Custom-effect color per LED }
+        ir:
+          type: object
+          properties:
+            last: { type: string, example: "0xBF40FF00", description: Last NEC code received (empty if none) }
+            learning: { type: string, nullable: true }
+            codes: { type: object, additionalProperties: { type: string } }
+            enabled: { type: boolean, description: IR receiver on/off }
+        ringRotation: { type: integer, minimum: 0, maximum: 7, description: WebUI ring rotation in LED steps }
+        hostname: { type: string }
+        ip: { type: string }
+        rssi: { type: integer }
+        version: { type: string }
